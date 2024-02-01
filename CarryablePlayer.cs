@@ -8,8 +8,12 @@ namespace OC2ThrowAny
     {
         public override bool CanHandlePickup(ICarrier _carrier)
         {
-            IAttachment component = base.gameObject.GetComponent<IAttachment>();
-            return base.isActiveAndEnabled && !component.IsAttached();
+            IAttachment attachment = base.gameObject.GetComponent<IAttachment>();
+            var carrier = base.gameObject.GetComponent<ServerPlayerAttachmentCarrier>();
+            return 
+                base.isActiveAndEnabled && 
+                !attachment.IsAttached() && 
+                carrier.InspectCarriedItem() != _carrier.AccessGameObject();
         }
 
         public override void HandlePickup(ICarrier _carrier, Vector2 _directionXZ)
@@ -29,6 +33,7 @@ namespace OC2ThrowAny
     {
         public virtual void Awake()
         {
+            m_carrier = base.gameObject.RequireComponent<ServerPlayerAttachmentCarrier>();
             m_playerControls = base.gameObject.RequireComponent<PlayerControls>();
             m_ServerTeleportablePlayer = base.gameObject.RequireComponent<ServerTeleportablePlayer>();
             m_transform = base.transform;
@@ -41,7 +46,7 @@ namespace OC2ThrowAny
             if (m_isHeld)
             {
                 m_transform.SetParent(m_holder.GetAttachPoint(base.gameObject));
-                m_transform.localPosition = holdSpace;
+                m_transform.localPosition = m_carrier.InspectCarriedItem(PlayerAttachTarget.Back) == null ? holdSpaceDefault : holdSpaceBackpack;
                 m_transform.localRotation = Quaternion.identity;
                 if (m_playerControls.m_bRespawning || 
                     m_ServerTeleportablePlayer != null && m_ServerTeleportablePlayer.IsTeleporting())
@@ -74,7 +79,7 @@ namespace OC2ThrowAny
             Vector3 lossyScale = m_transform.lossyScale;
             Vector3 b = new Vector3(1f / lossyScale.x, 1f / lossyScale.y, 1f / lossyScale.z);
             m_transform.localScale = m_transform.localScale.MultipliedBy(b);
-            m_transform.localPosition = holdSpace;
+            m_transform.localPosition = m_carrier.InspectCarriedItem(PlayerAttachTarget.Back) == null ? holdSpaceDefault : holdSpaceBackpack;
             m_transform.localRotation = Quaternion.identity;
             m_isHeld = true;
             m_holder = _parentable;
@@ -129,7 +134,9 @@ namespace OC2ThrowAny
             message.LocalRotation = m_transform.rotation;
         }
 
-        static Vector3 holdSpace = new Vector3(0f, 0.3f, 0.3f);
+        private ServerPlayerAttachmentCarrier m_carrier;
+        static readonly Vector3 holdSpaceDefault = new Vector3(0f, 0.3f, 0.3f);
+        static readonly Vector3 holdSpaceBackpack = new Vector3(0f, 0.3f, 1.0f);
         const float delayGravity = 0.2f;
         private PlayerControls m_playerControls;
         private ServerTeleportablePlayer m_ServerTeleportablePlayer;
