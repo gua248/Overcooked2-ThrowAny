@@ -3,7 +3,7 @@ using HarmonyLib;
 
 namespace OC2ThrowAny
 {
-    [BepInPlugin("dev.gua.overcooked.throwany", "Overcooked2 ThrowAny Plugin", "1.0.1")]
+    [BepInPlugin("dev.gua.overcooked.throwany", "Overcooked2 ThrowAny Plugin", "1.0.2")]
     [BepInProcess("Overcooked2.exe")]
     public class ThrowAnyPlugin : BaseUnityPlugin
     {

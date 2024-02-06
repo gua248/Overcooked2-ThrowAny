@@ -18,6 +18,13 @@ namespace OC2ThrowAny
             _object.GetComponent<ServerPlayerAttachment>()?.CorrectMessage(_data.WorldObject);
         }
 
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(ClientChefSynchroniser), "LocalChefReceiveData")]
+        public static void ClientChefSynchroniserLocalChefReceiveDataPatch(ClientChefSynchroniser __instance, ChefPositionMessage dataReceived)
+        {
+            __instance.GetComponent<ClientPlayerAttachment>()?.LocalChefReceiveData(dataReceived);
+        }
+
         [HarmonyPostfix]
         [HarmonyPatch(typeof(ServerWorldObjectSynchroniser), "PopulateMessage")]
         public static void ServerWorldObjectSynchroniserPopulateMessagePatch(ServerWorldObjectSynchroniser __instance)
@@ -35,6 +42,25 @@ namespace OC2ThrowAny
                 ceiling.transform.position = ceiling.transform.position.AddY(2.0f);
         }
 
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(ServerSessionInteractable), "CanInteract")]
+        [HarmonyPatch(typeof(ServerCannonSessionInteractable), "CanInteract")]
+        public static void ServerSessionInteractableCanInteractPatch(GameObject _interacter, ref bool __result)
+        {
+            var serverPlayerAttachment = _interacter.GetComponent<ServerPlayerAttachment>();
+            if (serverPlayerAttachment != null && serverPlayerAttachment.IsAttached())
+                __result = false;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(PlayerControlsHelper), "PlaceHeldItem_Server")]
+        public static bool PlayerControlsHelperPlaceHeldItem_ServerPatch(PlayerControls _control)
+        {
+            ICarrier carrier = _control.gameObject.RequireInterface<ICarrier>();
+            GameObject x = carrier.InspectCarriedItem();
+            return x.GetComponent<ServerPlayerAttachment>() == null;
+        }
+
         [HarmonyPrefix]
         [HarmonyPatch(typeof(PlayerControlsHelper), "PlaceHeldItem_Client")]
         public static bool PlayerControlsHelperPlaceHeldItem_ClientPatch(PlayerControls _control)
@@ -42,7 +68,7 @@ namespace OC2ThrowAny
             ICarrier carrier = _control.gameObject.RequireInterface<ICarrier>();
             GameObject x = carrier.InspectCarriedItem();
             IClientHandlePlacement iHandlePlacement = _control.CurrentInteractionObjects.m_iHandlePlacement;
-            return x.GetComponent<ServerPlayerAttachment>() == null || iHandlePlacement == null;
+            return x.GetComponent<ClientPlayerAttachment>() == null || iHandlePlacement == null;
         }
 
         [HarmonyPrefix]
@@ -60,12 +86,12 @@ namespace OC2ThrowAny
             var serverThrowableItem = __instance.GetComponent<ServerThrowableItem>();
             if (serverThrowableItem != null && serverThrowableItem.IsFlying()) return false;
             var serverPlayerAttachment = __instance.GetComponent<ServerPlayerAttachment>();
-            if (serverPlayerAttachment != null && serverPlayerAttachment.m_isHeld) return false;
+            if (serverPlayerAttachment != null && serverPlayerAttachment.IsAttached()) return false;
             
             serverThrowableItem = _otherPlayer.GetComponent<ServerThrowableItem>();
             if (serverThrowableItem != null && serverThrowableItem.IsFlying()) return false;
             serverPlayerAttachment = _otherPlayer.GetComponent<ServerPlayerAttachment>();
-            if (serverPlayerAttachment != null && serverPlayerAttachment.m_isHeld) return false;
+            if (serverPlayerAttachment != null && serverPlayerAttachment.IsAttached()) return false;
             return true;
         }
 
@@ -87,13 +113,6 @@ namespace OC2ThrowAny
         public static bool ServerThrowableItemSendStateMessagePatch(ServerThrowableItem __instance)
         {
             return __instance.GetComponent<ThrowableItem>().m_throwParticle != null;
-        }
-
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(ClientChefSynchroniser), "LocalChefReceiveData")]
-        public static void ClientChefSynchroniserLocalChefReceiveDataPatch(ClientChefSynchroniser __instance, ChefPositionMessage dataReceived)
-        {
-            __instance.GetComponent<ClientPlayerAttachment>()?.LocalChefReceiveData(dataReceived);
         }
 
         // ThrowableItem has an attribute [RequireComponent(typeof(PhysicalAttachment))]
@@ -125,17 +144,17 @@ namespace OC2ThrowAny
                 var serverThrowableItem = gameObject.AddComponent<ServerThrowableItem>();
                 serverThrowableItem.SetSynchronisedComponent(throwableItem);
                 serverThrowableItem.StartSynchronising(throwableItem);
-                gameObject.AddComponent<ServerCarryablePlayer>();
                 var component = gameObject.AddComponent<ServerPlayerAttachment>();
                 EntitySerialisationRegistry.GetEntry(gameObject).m_ServerSynchronisedComponents.Add(component);
                 // for UpdateSynchronising() being called
+                gameObject.AddComponent<ServerCarryablePlayer>();
             }
             var clientThrowableItem = gameObject.AddComponent<ClientThrowableItem>();
             clientThrowableItem.SetSynchronisedComponent(throwableItem);
             clientThrowableItem.StartSynchronising(throwableItem);
-            gameObject.AddComponent<ClientCarryablePlayer>();
             gameObject.AddComponent<ClientPlayerAttachment>();
             ComponentCache<IClientHandlePickup>.CacheObject(gameObject);
+            gameObject.AddComponent<ClientCarryablePlayer>();
         }
 
         [HarmonyPostfix]

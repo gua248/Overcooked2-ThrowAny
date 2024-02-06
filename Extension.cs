@@ -1,11 +1,25 @@
 ﻿using HarmonyLib;
 using System.Reflection;
 using Team17.Online.Multiplayer.Messaging;
-using UnityEngine;
 using UnityEngine.UI;
 
 namespace OC2ThrowAny.Extension
 {
+    static class ServerSessionInteractableExtension
+    {
+        static readonly FieldInfo fieldInfo_m_session = AccessTools.Field(typeof(ServerSessionInteractable), "m_session");
+        static readonly MethodInfo methodInfo_OnSessionEnded = AccessTools.Method(typeof(ServerSessionInteractable).GetNestedType("SessionBase", BindingFlags.Instance | BindingFlags.NonPublic), "OnSessionEnded");
+        
+        public static void EndSession(this ServerSessionInteractable instance)
+        {
+            if (instance.enabled)
+            {
+                object session = fieldInfo_m_session.GetValue(instance);
+                methodInfo_OnSessionEnded.Invoke(session, null);
+            }
+        }
+    }
+
     static class ServerWorldObjectSynchroniserExtension
     {
         static readonly FieldInfo fieldInfo_m_ServerData = AccessTools.Field(typeof(ServerWorldObjectSynchroniser), "m_ServerData");

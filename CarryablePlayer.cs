@@ -1,4 +1,5 @@
-﻿using System;
+﻿using OC2ThrowAny.Extension;
+using System;
 using Team17.Online.Multiplayer.Messaging;
 using UnityEngine;
 
@@ -6,32 +7,51 @@ namespace OC2ThrowAny
 {
     public class ServerCarryablePlayer : ServerCarryableItem
     {
+        public void Awake()
+        {
+            m_carrier = base.gameObject.GetComponent<ServerPlayerAttachmentCarrier>();
+            m_attachment = base.gameObject.GetComponent<ServerPlayerAttachment>();
+            m_animationDecisions = base.gameObject.GetComponent<PlayerAnimationDecisions>();
+            m_controls = base.gameObject.GetComponent<PlayerControls>();
+        }
+
         public override bool CanHandlePickup(ICarrier _carrier)
         {
-            IAttachment attachment = base.gameObject.GetComponent<IAttachment>();
-            var carrier = base.gameObject.GetComponent<ServerPlayerAttachmentCarrier>();
             return 
                 base.isActiveAndEnabled && 
-                !attachment.IsAttached() && 
-                carrier.InspectCarriedItem() != _carrier.AccessGameObject();
+                !m_attachment.IsAttached() && 
+                m_carrier.InspectCarriedItem() != _carrier.AccessGameObject() &&
+                !m_animationDecisions.IsInCannon();
         }
 
         public override void HandlePickup(ICarrier _carrier, Vector2 _directionXZ)
         {
-            IAttachment component = base.gameObject.GetComponent<IAttachment>();
-            if (component.IsAttached())
-            {
-                component.Detach();
-            }
+            EndInteractableSession();
             _carrier.CarryItem(base.gameObject);
         }
+
+        void EndInteractableSession()
+        {
+            if (m_controls == null) return;
+            var currentlyInteracting = m_controls.GetCurrentlyInteracting();
+            if (currentlyInteracting == null) return;
+            var serverSessionInteractable = 
+                currentlyInteracting.GetComponent<ServerPushableObject>() as ServerSessionInteractable ?? 
+                currentlyInteracting.GetComponent<ServerTerminal>() as ServerSessionInteractable;
+            serverSessionInteractable?.EndSession();
+        }
+
+        ServerPlayerAttachmentCarrier m_carrier;
+        ServerPlayerAttachment m_attachment;
+        PlayerAnimationDecisions m_animationDecisions;
+        PlayerControls m_controls;
     }
 
     public class ClientCarryablePlayer : ClientCarryableItem { }
 
     public class ServerPlayerAttachment : ServerSynchroniserBase, IAttachment
     {
-        public virtual void Awake()
+        public void Awake()
         {
             m_carrier = base.gameObject.RequireComponent<ServerPlayerAttachmentCarrier>();
             m_playerControls = base.gameObject.RequireComponent<PlayerControls>();
@@ -45,7 +65,6 @@ namespace OC2ThrowAny
         {
             if (m_isHeld)
             {
-                m_transform.SetParent(m_holder.GetAttachPoint(base.gameObject));
                 m_transform.localPosition = m_carrier.InspectCarriedItem(PlayerAttachTarget.Back) == null ? holdSpaceDefault : holdSpaceBackpack;
                 m_transform.localRotation = Quaternion.identity;
                 if (m_playerControls.m_bRespawning || 
@@ -75,6 +94,7 @@ namespace OC2ThrowAny
 
         public void Attach(IParentable _parentable)
         {
+            m_originalParent = base.transform.parent;
             m_transform.SetParent(_parentable.GetAttachPoint(base.gameObject));
             Vector3 lossyScale = m_transform.lossyScale;
             Vector3 b = new Vector3(1f / lossyScale.x, 1f / lossyScale.y, 1f / lossyScale.z);
@@ -85,17 +105,30 @@ namespace OC2ThrowAny
             m_holder = _parentable;
             m_playerControls.m_bApplyGravity = false;
             m_playerControls.Motion.SetKinematic(true);
+            DynamicLandscapeParenting dynamicLandscapeParenting = base.gameObject.RequestComponent<DynamicLandscapeParenting>();
+            if (dynamicLandscapeParenting != null)
+            {
+                dynamicLandscapeParenting.enabled = false;
+            }
             OnAttachChanged(_parentable);
         }
 
         public void Detach()
         {
-            m_transform.SetParent(null);
-            m_transform.localScale = Vector3.one;
+            if (m_transform.parent == m_holder.GetAttachPoint(base.gameObject))
+            {
+                m_transform.SetParent(m_originalParent);
+                m_transform.localScale = Vector3.one;
+            }
             m_isHeld = false;
             m_holder= null;
             m_detachedTimer = delayGravity;
             m_playerControls.Motion.SetKinematic(false);
+            DynamicLandscapeParenting dynamicLandscapeParenting = base.gameObject.RequestComponent<DynamicLandscapeParenting>();
+            if (dynamicLandscapeParenting != null)
+            {
+                dynamicLandscapeParenting.enabled = true;
+            }
             OnAttachChanged(null);
         }
 
@@ -126,11 +159,10 @@ namespace OC2ThrowAny
 
         public void CorrectMessage(WorldObjectMessage message)
         {
-            if (!m_disableDynamicReparenting) return;
-            if (m_originalParent != null)
-            message.HasParent = true;
-            message.ParentEntityID = m_isHeld ? 1023U : 0U;
-            message.LocalPosition = m_transform.position - m_originalParent.position;
+            if (!m_disableDynamicReparenting || !m_isHeld) return;
+            message.LocalPosition = m_originalParent == null ? 
+                m_transform.position : m_transform.position - m_originalParent.position;
+            message.ParentEntityID = 1023U;
             message.LocalRotation = m_transform.rotation;
         }
 
@@ -140,7 +172,7 @@ namespace OC2ThrowAny
         const float delayGravity = 0.2f;
         private PlayerControls m_playerControls;
         private ServerTeleportablePlayer m_ServerTeleportablePlayer;
-        public bool m_isHeld = false;
+        private bool m_isHeld = false;
         private IParentable m_holder;
         private float m_detachedTimer;
         private AttachChangedCallback m_attachChangedCallback = delegate (IParentable _parentable) { };
